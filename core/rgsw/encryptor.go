@@ -51,7 +51,7 @@ func (enc Encryptor) Encrypt(pt *rlwe.Plaintext, ct interface{}) (err error) {
 			if !pt.IsMontgomery {
 				ringQ.MForm(pt.Value, enc.buffQP.Q)
 			} else {
-				pt.Value.CopyLvl(levelQ, enc.buffQP.Q)
+				enc.buffQP.Q.CopyLvl(levelQ, pt.Value)
 			}
 		}
 

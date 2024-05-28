@@ -1,0 +1,240 @@
+
+func TestPreprocess(t *testing.T) {
+	var err error
+	var params hefloat.Parameters
+	if params, err = hefloat.NewParametersFromLiteral(testParamsLiteral[0]); err != nil {
+		panic(err)
+	}
+
+	ringQP := params.RingQP()
+	ringQ := ringQP.RingQ
+
+	kgen := ntru.NewKeyGenerator(params)
+
+	pRLWE := *params.GetRLWEParameters()
+	ntruv_kgen := NewKeyGenerator(pRLWE)
+
+	N := params.N()
+	galEl := make([]uint64, 2*N-1)
+
+	for i := 0; i < len(galEl); i++ {
+		galEl[i] = 2*uint64(i) + 3
+	}
+
+	sk, sk_inv := kgen.GenSecretKeyPairNew()
+	encryptor := ntru.NewEncryptor(params, sk_inv)
+	// decryptor := ntru.NewDecryptor(params, sk)
+
+	basetwo := 16
+	evkParams := rlwe.EvaluationKeyParameters{LevelQ: utils.Pointy(params.MaxLevelQ()), LevelP: utils.Pointy(params.MaxLevelP()), BaseTwoDecomposition: utils.Pointy(basetwo)}
+	evk := rlwe.NewMemEvaluationKeySet(nil, ntruv_kgen.GenAutoKeysNew(galEl, sk, sk_inv, evkParams)...)
+
+	ev := NewEvaluator(params, evk)
+
+	/// polynomial setup
+	p1_poly := ringQ.NewPoly()
+
+	prng, err := sampling.NewPRNG()
+	if err != nil {
+		panic(err)
+	}
+	UniSampler := ringqp.NewUniformSampler(prng, *ringQP)
+	UniSampler.AtLevel(p1_poly.Level(), -1).Read(ringqp.Poly{Q: p1_poly})
+
+	var pt *rlwe.Plaintext
+	if pt, err = rlwe.NewPlaintextAtLevelFromPoly(p1_poly.Level(), p1_poly); err != nil {
+		panic(err)
+	}
+
+	ringQ.NTT(pt.Value, pt.Value)
+	// ringQ.MForm(pt.Value, pt.Value)
+
+	pt.MetaData.IsNTT = true
+	//pt.MetaData.IsMontgomery = true
+
+	var ct *rlwe.Ciphertext
+	if ct, err = encryptor.EncryptNew(pt); err != nil {
+		panic(err)
+	}
+
+	ct_prep := ev.Preprocess(ct)
+	UNUSED(ct_prep)
+	/*
+		pt_dec := decryptor.DecryptNew(ct_prep)
+		ringQ.INTT(pt_dec.Value, pt_dec.Value)
+		ringQ.IMForm(pt_dec.Value, pt_dec.Value)
+
+		for i := 0; i < N; i++ {
+			fmt.Printf("%d ", pt_dec.Value.Coeffs[0][i])
+		}
+	*/
+}
+
+/*
+func (eval Evaluator) Preprocess(ct *rlwe.Ciphertext) (ct_prep *rlwe.Ciphertext) {
+	ct_prep = ct.CopyNew()
+
+	acc := eval.BuffCt
+
+	param := eval.GetRLWEParameters()
+	ringQ := param.RingQ()
+	Q := ringQ.ModulusAtLevel[ct.Level()]
+
+	N := param.N() // can be adjusted to sparse n
+	fmt.Print(Q)
+	fmt.Printf("\n")
+
+	twoN := uint64(N << 1)
+	twoNBig := big.NewInt(int64(twoN))
+
+	ct_prime := ct.CopyNew() // 2N * ct
+	ringQ.MulScalar(ct_prime.Value[0], twoN, ct_prime.Value[0])
+	ringQ.MulScalar(ct_prime.Value[1], twoN, ct_prime.Value[1])
+
+	if ct.IsNTT {
+		ringQ.INTT(ct.Value[0], acc.Value[0])
+		ringQ.INTT(ct.Value[1], acc.Value[1])
+	} else {
+		acc.Value[0].Copy(ct.Value[0])
+		acc.Value[1].Copy(ct.Value[1])
+	}
+
+	if ct_prime.IsNTT {
+		ringQ.INTT(ct_prime.Value[0], ct_prime.Value[0])
+		ringQ.INTT(ct_prime.Value[1], ct_prime.Value[1])
+	}
+
+	b_coeffs := make([]*big.Int, N)
+	a_coeffs := make([]*big.Int, N)
+
+	b_coeffs_prime := make([]*big.Int, N)
+	a_coeffs_prime := make([]*big.Int, N)
+
+	ringQ.PolyToBigint(acc.Value[0], 1, a_coeffs)
+	ringQ.PolyToBigint(acc.Value[1], 1, b_coeffs)
+
+	ringQ.PolyToBigint(ct_prime.Value[0], 1, a_coeffs_prime)
+	ringQ.PolyToBigint(ct_prime.Value[1], 1, b_coeffs_prime)
+
+	for i := 0; i < N; i++ {
+		a_coeffs[i].Mul(a_coeffs[i], twoNBig)
+		b_coeffs[i].Mul(b_coeffs[i], twoNBig)
+
+		a_coeffs[i].Sub(a_coeffs[i], a_coeffs_prime[i])
+		b_coeffs[i].Sub(b_coeffs[i], b_coeffs_prime[i])
+
+		a_coeffs[i].Div(a_coeffs[i], Q)
+		b_coeffs[i].Div(b_coeffs[i], Q)
+	}
+
+	for i := 0; i < N; i++ {
+		fmt.Print(a_coeffs[i])
+		fmt.Printf(" ")
+	}
+	fmt.Printf("\n\n")
+
+	for i := 0; i < N; i++ {
+		fmt.Print(b_coeffs[i])
+		fmt.Printf(" ")
+	}
+	fmt.Printf("\n\n")
+
+	return
+}
+
+/*
+func (eval Evaluator) Preprocess(ct *rlwe.Ciphertext) (ct_prep *rlwe.Ciphertext) {
+	// checks the coefficient of the noiseless cipher
+
+
+
+	var err error
+	var params hefloat.Parameters
+	if params, err = hefloat.NewParametersFromLiteral(testParamsLiteral[0]); err != nil {
+		panic(err)
+	}
+
+	ringQ := params.RingQ().AtLevel(ct.Level())
+
+	twoN := uint64(params.N() << 1)
+	twoNBig := bignum.NewInt(twoN)
+	// fmt.Printf("%d\n", twoN)
+
+	ct_prime, err := eval.MulNew(ct_prep, twoN)
+	if err != nil {
+		panic(err)
+	}
+
+
+
+
+
+
+
+	// set the coefficient in ct_prime
+
+	// set the NTT format
+
+	// check the decryption result of ct_prime
+
+	return
+}
+*/
+
+// use the algorithm in 2020-015
+func (eval Evaluator) Combine(cts []*rlwe.Ciphertext, n, N int) *rlwe.Ciphertext {
+	BR_cts := NewQueue() // make it in queue structure
+	ord := BitRevGen(uint(n))
+	ringQ := eval.GetRLWEParameters().RingQ()
+	// invN := new(big.Int).ModInverse(new(big.Int).SetUint64(uint64(N)), ringQ.ModulusAtLevel[cts[0].Level()])
+
+	for _, v := range ord {
+		// ct_temp := cts[v]
+		// ringQ.MulScalarBigint(ct_temp.Value[0], invN, ct_temp.Value[0])
+		// ringQ.MulScalarBigint(ct_temp.Value[1], invN, ct_temp.Value[1])
+		BR_cts.Push(cts[v])
+	}
+
+	var cur_n int
+	var idx int
+	var cur_len int
+
+	idx = 1
+	xPow2 := GenXPow2(ringQ, eval.GetRLWEParameters().LogN(), false)
+
+	for BR_cts.Len() > 1 {
+		cur_len = BR_cts.Len()
+		cur_n = 1 << idx
+
+		for i := 0; i < cur_len; i += 2 {
+			// pop 2 elements
+			ct_even := BR_cts.Pop().(*rlwe.Ciphertext)
+			ct_odd := BR_cts.Pop().(*rlwe.Ciphertext)
+
+			// mult ct_odd by X^(N/cur_n)
+			ringQ.MulCoeffsMontgomery(ct_odd.Value[0], xPow2[len(xPow2)-idx], ct_odd.Value[0])
+			ringQ.MulCoeffsMontgomery(ct_odd.Value[1], xPow2[len(xPow2)-idx], ct_odd.Value[1])
+
+			ct1 := eval.BuffCt
+			ringQ.Add(ct_even.Value[0], ct_odd.Value[0], ct1.Value[0])
+			ringQ.Add(ct_even.Value[1], ct_odd.Value[1], ct1.Value[1]) // ct_even + X^N/n_cur * ct_odd
+
+			ringQ.Sub(ct_even.Value[0], ct_odd.Value[0], ct_even.Value[0])
+			ringQ.Sub(ct_even.Value[1], ct_odd.Value[1], ct_even.Value[1]) // ct_even - X^N/n_cur * ct_odd
+
+			eval.Automorphism(ct_even, uint64(cur_n+1), ct_odd)
+
+			ringQ.Add(ct_odd.Value[0], ct1.Value[0], ct_odd.Value[0])
+			ringQ.Add(ct_odd.Value[1], ct1.Value[1], ct_odd.Value[1])
+
+			// push the element to BR_cts
+			BR_cts.Push(ct_odd)
+		}
+
+		idx += 1
+	}
+
+	fin := BR_cts.Pop().(*rlwe.Ciphertext)
+	eval.Trace(fin, int(math.Logb(float64(n)))-1, fin)
+	return fin
+}

@@ -512,7 +512,7 @@ func (p Parameters) BaseTwoDecompositionVectorSize(levelQ, levelP, Base2Decompos
 		}
 	} else {
 		for i := range base {
-			base[i] = (logqi[i] + Base2Decomposition - 1) / Base2Decomposition
+			base[i] = (logqi[i]+Base2Decomposition-1)/Base2Decomposition + 1
 		}
 	}
 

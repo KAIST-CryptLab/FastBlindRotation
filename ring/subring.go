@@ -106,7 +106,7 @@ func (s *SubRing) generateNTTConstants() (err error) {
 	}
 
 	if Modulus&(NthRoot-1) != 1 {
-		return fmt.Errorf("invalid modulus: %d != 1 mod NthRoot)", Modulus)
+		return fmt.Errorf("invalid modulus: %d != 1 mod NthRoot %d)", Modulus, NthRoot)
 	}
 
 	// It is possible to manually set the primitive root along with the factors of q-1.

@@ -33,6 +33,8 @@ func NewGaussianSampler(prng sampling.PRNG, baseRing *Ring, X DiscreteGaussian, 
 	g.baseRing = baseRing
 	g.xe = X
 	g.montgomery = montgomery
+
+	// fmt.Printf("Sigma : %f, Bound : %f\n", X.Sigma, X.Bound)
 	return
 }
 
